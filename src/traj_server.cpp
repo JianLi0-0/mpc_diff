@@ -13,6 +13,7 @@
 #include <ros/ros.h>
 #include "time.h"
 #include <nav_msgs/Path.h>
+#include <boost/algorithm/clamp.hpp>
 
 #define PI 3.1415926
 #define yaw_error_max 90.0/180*PI
@@ -59,6 +60,14 @@ std_msgs::UInt8 stop_command;
 ////time record
 clock_t start_clock, end_clock;
 double duration;
+
+void accelerationConstraint(const double &current_vel, const double &target_vel,
+                                                            const double &acc, double &output_vel) {
+    const double &dt = 0.03;
+    const double min_vel = current_vel - acc * dt;
+    const double max_vel = current_vel + acc * dt;
+    output_vel = boost::algorithm::clamp(target_vel, min_vel, max_vel);
+}
 
 void globalPathCallback(nav_msgs::PathConstPtr msg) {
 
@@ -314,6 +323,8 @@ void odometryCallback(const nav_msgs::OdometryConstPtr &msg) {
 
 }
 
+geometry_msgs::Twist last_cmd;
+
 void cmdCallback(const ros::TimerEvent &e) {
     /* no publishing before receive traj_ */
     if (stop_command.data == 1) {
@@ -343,8 +354,9 @@ void cmdCallback(const ros::TimerEvent &e) {
         duration = (double) (end_clock - start_clock) / CLOCKS_PER_SEC * 1000;
         //ROS_INFO("Control times : %f ms",duration);
     } else if (t_cur >= traj_duration_) {
+        accelerationConstraint(last_cmd.linear.x, 0, 1.5, cmd.linear.x);
         cmd.angular.z = 0;
-        cmd.linear.x = 0;
+//        cmd.linear.x = 0;
         vel_cmd_pub.publish(cmd);
         is_orientation_init = false;
     } else {
@@ -353,6 +365,7 @@ void cmdCallback(const ros::TimerEvent &e) {
     time_last = time_s;
 
     vel_cmd_pub.publish(cmd);
+    last_cmd = cmd;
 }
 
 
