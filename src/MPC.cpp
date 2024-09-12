@@ -95,6 +95,7 @@ MPC_controller::MPC_Solve_qp(Eigen::Vector3d X_k, std::vector<Eigen::Vector3d> X
     int_t nWSR = 800;
 
     QProblem mpc_qp_solver(2 * N, 1);
+    mpc_qp_solver.setPrintLevel(PL_LOW);
     mpc_qp_solver.init(H, g, A, lb, ub, lbA, ubA, nWSR);
 
     real_t x_solution[2 * N];

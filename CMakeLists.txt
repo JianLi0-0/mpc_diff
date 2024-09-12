@@ -8,9 +8,15 @@ set(CMAKE_CXX_FLAGS "-DHAVE_CSTDDEF -DHAVE_MPI_INITIALIZED")
 find_package(Eigen3 REQUIRED)
 find_package(catkin REQUIRED COMPONENTS
         roscpp
-
         )
 
+find_package(trajectory_utils REQUIRED)
+
+find_package(Python3 REQUIRED COMPONENTS
+        Interpreter
+        Development
+        NumPy
+)
 
 catkin_package(
         INCLUDE_DIRS include
@@ -40,7 +46,14 @@ add_definitions(${EIGEN3_DEFINITIONS})
 add_executable(traj_server src/traj_server.cpp
                            src/uniform_bspline.cpp
                            src/MPC.cpp)
-target_link_libraries(traj_server ${catkin_LIBRARIES} libqpOASES.so)
+target_link_libraries(traj_server
+        ${catkin_LIBRARIES}
+        trajectory_utils
+        libqpOASES.so
+        Python3::Python
+        Python3::Module
+        Python3::NumPy
+)
 
 add_executable(test_path_pub src/test_path_pub.cpp)
 target_link_libraries(test_path_pub ${catkin_LIBRARIES})
