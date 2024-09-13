@@ -39,7 +39,6 @@ double vel_gain[3] = {0, 0, 0};
 using ego_planner::UniformBspline;
 
 bool receive_traj_ = false;
-bool is_orientation_init = false;
 vector<UniformBspline> traj_;
 double traj_duration_;
 ros::Time start_time_, time_s, time_e;
@@ -114,19 +113,20 @@ void globalPathCallback(nav_msgs::PathConstPtr msg) {
 
     trajectory_info.combinePathAndSpeedProfile();
 
-    {
-
+//    {
+//
 //        std::vector<double> t_vec, s_vec, v_vec, a_vec;
 //        double time_span = trajectory_info.getSpeedDataPtr()->get_duration();
 //        for (double t=0.0;t<=time_span;t+=0.01) {
 //            t_vec.push_back(t);
 //        }
-//        std::vector<double> x_traj_vec, y_traj_vec, s_traj_vec, v_traj_vec, a_traj_vec, kappa_traj_vec;
+//        std::vector<double> x_traj_vec, y_traj_vec, s_traj_vec, v_traj_vec, a_traj_vec, kappa_traj_vec, theta_traj_vec;
 //        x_traj_vec.reserve(t_vec.size());
 //        y_traj_vec.reserve(t_vec.size());
 //        s_traj_vec.reserve(t_vec.size());
 //        v_traj_vec.reserve(t_vec.size());
 //        a_traj_vec.reserve(t_vec.size());
+//        theta_traj_vec.reserve(t_vec.size());
 //        kappa_traj_vec.reserve(t_vec.size());
 //        auto discretized_trajectory = trajectory_info.getTrajectoryPtr();
 //        for (auto t : t_vec) {
@@ -137,15 +137,17 @@ void globalPathCallback(nav_msgs::PathConstPtr msg) {
 //            kappa_traj_vec.push_back(traj_point.path_point().kappa());
 //            v_traj_vec.push_back(traj_point.v());
 //            a_traj_vec.push_back(traj_point.a());
+//            theta_traj_vec.push_back(traj_point.path_point().theta());
 //        }
 //
 //        plt::plot(t_vec, s_traj_vec);
 //        plt::plot(t_vec, v_traj_vec);
 //        plt::plot(t_vec, a_traj_vec);
 //        plt::plot(t_vec, kappa_traj_vec);
+//        plt::plot(t_vec, theta_traj_vec);
 //
 //        plt::show();
-    }
+//    }
 
     start_time_ = ros::Time::now();
     traj_id_ = 0;
@@ -187,7 +189,7 @@ void MPC_calculate(double &remain_s) {
     Eigen::Vector2d u_r;
     Eigen::Vector3d x_r, x_r_1, x_r_2;
     double v_linear_1, w;
-    double t_k; // t_k_1;
+    double t_k, t_k_1;
 
 //    bool is_orientation_adjust = false;
 //    double orientation_adjust = 0;
@@ -219,15 +221,19 @@ void MPC_calculate(double &remain_s) {
         a_ref_vec.clear();
         kappa_ref_vec.clear();
     }
-    is_orientation_init = true;
+
+    bool is_orientation_adjust = false;
+    double orientation_adjust=0;
+
     for (int i = 0; i < N; i++) {
 
         t_k = t_cur + i * t_step;
-        t_vec.push_back(t_k);
-//        t_k_1 = t_cur + (i + 1) * t_step;
+        t_k_1 = t_cur + (i + 1) * t_step;
 
-//        pos_r = traj_[0].evaluateDeBoor(t_k);
+        t_vec.push_back(t_k);
+
         auto pos_r_raw = discretized_trajectory->Evaluate(t_k);
+        auto pos_r_1_raw = discretized_trajectory->Evaluate(t_k_1);
         pos_r << pos_r_raw.path_point().x(), pos_r_raw.path_point().y(), 0.0;
 
         x_r(0) = pos_r(0);
@@ -237,43 +243,31 @@ void MPC_calculate(double &remain_s) {
         y_ref_vec.push_back(pos_r(1));
         s_ref_vec.push_back(pos_r_raw.path_point().s());
 
-//        v_r_1 = traj_[1].evaluateDeBoor(t_k);
-//        v_r_2 = traj_[1].evaluateDeBoor(t_k_1);
-//        v_r_1(2) = 0;
-//        v_r_2(2) = 0;
-//        v_linear_1 = v_r_1.norm();
         v_linear_1 = pos_r_raw.v();
         v_ref_vec.push_back(v_linear_1);
-//        if ((t_k - traj_duration_) >= 0) {
-//            x_r(2) = atan2((pos_r - pos_final)(1), (pos_r - pos_final)(0));
-//        } else {
-//            x_r(2) = atan2(v_r_1(1), v_r_1(0));
-//        }
+
         x_r(2) = pos_r_raw.path_point().theta();
         theta_ref_vec.push_back(x_r(2));
 
-//        double yaw1 = atan2(v_r_1(1), v_r_1(0));
-//        double yaw2 = atan2(v_r_2(1), v_r_2(0));
-//
-//        if (abs(yaw2 - yaw1) > PI) {
-//            is_orientation_adjust = true;
-//            if ((yaw2 - yaw1) < 0) {
-//                orientation_adjust = 2 * PI;
-//                w = (2 * PI + (yaw2 - yaw1)) / t_step;
-//            } else {
-//                w = ((yaw2 - yaw1) - 2 * PI) / t_step;
-//                orientation_adjust = -2 * PI;
-//            }
-//        } else {
-//            w = (yaw2 - yaw1) / t_step;
-//        }
+        double yaw1 = pos_r_raw.path_point().theta();
+        double yaw2 = pos_r_1_raw.path_point().theta();
+
+        if (is_orientation_adjust) {
+            x_r(2) += orientation_adjust;
+        }
+
+        if (abs(yaw2 - yaw1) > PI) {
+            is_orientation_adjust = true;
+            if ((yaw2 - yaw1) < 0) {
+                orientation_adjust = 2 * PI;
+            } else {
+                orientation_adjust = -2 * PI;
+            }
+        }
+
         w = pos_r_raw.v() * pos_r_raw.path_point().kappa();
         w_ref_vec.push_back(w);
         kappa_ref_vec.push_back(pos_r_raw.path_point().kappa());
-
-//        if (is_orientation_adjust == true) {
-//            x_r(2) += orientation_adjust;
-//        }
 
         u_r(0) = v_linear_1;
         u_r(1) = w;
@@ -392,7 +386,6 @@ void cmdCallback(const ros::TimerEvent &e) {
         cmd.angular.z = 0;
         cmd.linear.x = 0;
 
-        is_orientation_init = false;
         receive_traj_ = false;
     }
 

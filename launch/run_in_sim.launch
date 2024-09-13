@@ -1,14 +1,18 @@
 <launch>
 
+    <include file="$(find vehicle_simulator)/launch/system_indoor.launch"/>
+
     <node pkg="mpc_diff" name="traj_server" type="traj_server" output="screen">
 <!--         <remap from="/state_estimation" to="/odom"/> -->
         <param name="/v_max" value="1.5"/>
-        <param name="/w_max" value="2.5"/>
+        <param name="/w_max" value="1.5"/>
         <param name="/omega0" value="5.0"/>
-        <param name="/omega1" value="0.1"/>
+        <param name="/omega1" value="0.01"/>
     </node>
 
     <node pkg="tf" type="static_transform_publisher" name="map_odom_broadcaster" args="0 0 0 0 0 0 /map /odom 100" />
+
+    <node pkg="mpc_diff" type="test_path_pub" name="test_path_pub" />
 
     <include file="$(find mpc_diff)/launch/rviz.launch"/>
 
