@@ -24,14 +24,13 @@ namespace plt = matplotlibcpp;
 #define N 15
 
 const double t_step = 0.03;
+const double save_distance = 0.5;
 
 ros::Publisher vel_cmd_pub, ref_vel_cmd_pub, ref_point_pub, ref_path_pub;
 ros::Publisher recorded_path_pub;
 ros::Publisher global_path_pub;
 nav_msgs::Path recorded_path;
 
-double t_cur = 0.0;
-//quadrotor_msgs::PositionCommand cmd;
 geometry_msgs::Twist cmd, ref_cmd;
 double pos_gain[3] = {0, 0, 0};
 double vel_gain[3] = {0, 0, 0};
@@ -41,8 +40,6 @@ using ego_planner::UniformBspline;
 bool receive_traj_ = false;
 vector<UniformBspline> traj_;
 double traj_duration_;
-ros::Time start_time_, time_s, time_e;
-int traj_id_;
 
 Eigen::Vector3d odom_pos_, odom_vel_;
 Eigen::Quaterniond odom_orient_;
@@ -65,14 +62,6 @@ clock_t start_clock, end_clock;
 double duration;
 
 trajectory_utils::TrajectoryInfo trajectory_info;
-
-void accelerationConstraint(const double &current_vel, const double &target_vel,
-                                                            const double &acc, double &output_vel) {
-    const double &dt = 0.03;
-    const double min_vel = current_vel - acc * dt;
-    const double max_vel = current_vel + acc * dt;
-    output_vel = boost::algorithm::clamp(target_vel, min_vel, max_vel);
-}
 
 void globalPathCallback(nav_msgs::PathConstPtr msg) {
 
@@ -101,15 +90,10 @@ void globalPathCallback(nav_msgs::PathConstPtr msg) {
     }
 
     trajectory_info.setPathData(path_data);
-    if (flag) {
-        trajectory_info.calSpeedData(
-                0.0, traj_point.v(), traj_point.a(),
-                trajectory_info.getPathDataPtr()->Length());
-    }
-    else {
-        trajectory_info.calSpeedData(
-                0.0, 0.0, 0.0, trajectory_info.getPathDataPtr()->Length());
-    }
+
+    trajectory_info.calSpeedData(
+            0.0, traj_point.v(), traj_point.a(),
+            trajectory_info.getPathDataPtr()->Length()-save_distance);
 
     trajectory_info.combinePathAndSpeedProfile();
 
@@ -149,19 +133,8 @@ void globalPathCallback(nav_msgs::PathConstPtr msg) {
 //        plt::show();
 //    }
 
-    start_time_ = ros::Time::now();
-    traj_id_ = 0;
-
-//    traj_.clear();
-//    traj_.push_back(pos_traj);
-//    traj_.push_back(traj_[0].getDerivative());
-//    traj_.push_back(traj_[1].getDerivative());
-
     traj_duration_ = trajectory_info.getSpeedDataPtr()->get_duration();
-    t_cur = 0.0;
-
     receive_traj_ = true;
-
 }
 
 void poseCallback(geometry_msgs::PoseStampedConstPtr msg) {
@@ -191,14 +164,9 @@ void MPC_calculate(double &remain_s) {
     double v_linear_1, w;
     double t_k, t_k_1;
 
-//    bool is_orientation_adjust = false;
-//    double orientation_adjust = 0;
-
     auto discretized_trajectory = trajectory_info.getTrajectoryPtr();
-//    auto traj_point = discretized_trajectory->Evaluate(t);
-
     trajectory_utils::TrajectoryPoint traj_point;
-    bool flag = trajectory_info.getRefTrajectoryPoint(
+    trajectory_info.getRefTrajectoryPoint(
             trajectory_utils::Vec2d(odom_pos_(0), odom_pos_(1)), traj_point);
     double t_cur = traj_point.relative_time();
     std::cout << "t_cur: " << t_cur << ",  traj_duration_: " << traj_duration_ << std::endl;
@@ -366,13 +334,6 @@ void odometryCallback(const nav_msgs::OdometryConstPtr &msg) {
 geometry_msgs::Twist last_cmd;
 
 void cmdCallback(const ros::TimerEvent &e) {
-    /* no publishing before receive traj_ */
-    if (stop_command.data == 1) {
-        cmd.angular.z = 0;
-        cmd.linear.x = 0;
-        vel_cmd_pub.publish(cmd);
-        return;
-    }
 
     if (!receive_traj_)
         return;
@@ -380,12 +341,11 @@ void cmdCallback(const ros::TimerEvent &e) {
     double remain_s = 0.0;
     MPC_calculate(remain_s);
 
-    if (remain_s < 0.1) {
+    if (remain_s < 0.06) {
         ROS_INFO("remain_s < 0.1");
-//        accelerationConstraint(last_cmd.linear.x, 0, 1.5, cmd.linear.x);
+        trajectory_info.reset();
         cmd.angular.z = 0;
         cmd.linear.x = 0;
-
         receive_traj_ = false;
     }
 
