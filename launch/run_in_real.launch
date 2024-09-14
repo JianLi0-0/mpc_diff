@@ -2,7 +2,7 @@
 
     <node pkg="mpc_diff" name="traj_server" type="traj_server" output="screen">
         <remap from="/state_estimation" to="/odom"/>
-        <remap from="/global_path" to="/move_base/SearchBasedPlanner/local_plan"/>
+<!--         <remap from="/global_path" to="/move_base/SearchBasedPlanner/local_plan"/> -->
         <param name="/v_max" value="1.5"/>
         <param name="/w_max" value="1.5"/>
         <param name="/omega0" value="5.0"/>
