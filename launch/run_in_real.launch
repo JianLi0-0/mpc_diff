@@ -9,6 +9,7 @@
         <param name="/omega1" value="0.01"/>
     </node>
 
-    <node pkg="mpc_diff" type="test_path_pub" name="test_path_pub" />
-
+    <node pkg="mpc_diff" type="test_path_pub" name="test_path_pub" output="screen" >
+        <remap from="/state_estimation" to="/odom"/>
+    </node>
 </launch>
