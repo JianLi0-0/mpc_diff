@@ -24,7 +24,7 @@ namespace plt = matplotlibcpp;
 #define N 15
 
 const double t_step = 0.03;
-const double save_distance = 0.5;
+const double save_distance = 1.2;
 
 ros::Publisher vel_cmd_pub, ref_vel_cmd_pub, ref_point_pub, ref_path_pub;
 ros::Publisher recorded_path_pub;
