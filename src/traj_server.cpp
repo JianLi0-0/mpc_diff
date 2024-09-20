@@ -65,6 +65,12 @@ trajectory_utils::TrajectoryInfo trajectory_info;
 
 void globalPathCallback(nav_msgs::PathConstPtr msg) {
 
+    if (msg->poses.empty()) {
+        ROS_ERROR("Received an empty path");
+        receive_traj_ = false;
+        return;
+    }
+
     Eigen::MatrixXd pos_pts(3, msg->poses.size());
 
 //    for (size_t i = 0; i < msg->poses.size(); ++i) {
