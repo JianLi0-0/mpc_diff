@@ -4,9 +4,9 @@
         <remap from="/state_estimation" to="/odom"/>
         <remap from="/global_path" to="/move_base/SearchBasedPlanner/local_plan"/>
         <param name="/v_max" value="1.5"/>
-        <param name="/w_max" value="1.5"/>
+        <param name="/w_max" value="0.7"/>
         <param name="/omega0" value="5.0"/>
-        <param name="/omega1" value="0.15"/>
+        <param name="/omega1" value="0.1"/>
     </node>
 
     <node pkg="mpc_diff" type="test_path_pub" name="test_path_pub" output="screen" >
