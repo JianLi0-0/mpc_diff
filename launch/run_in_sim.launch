@@ -6,9 +6,9 @@
 <!--         <remap from="/state_estimation" to="/odom"/> -->
 <!--         <remap from="/global_path" to="/move_base/SearchBasedPlanner/local_plan"/> -->
         <param name="/v_max" value="1.5"/>
-        <param name="/w_max" value="1.5"/>
-        <param name="/omega0" value="5.0"/>
-        <param name="/omega1" value="0.01"/>
+        <param name="/w_max" value="0.7"/>
+        <param name="/omega0" value="10.0"/>
+        <param name="/omega1" value="0.1"/>
     </node>
 
     <node pkg="tf" type="static_transform_publisher" name="map_odom_broadcaster" args="0 0 0 0 0 0 /map /odom 100" />
