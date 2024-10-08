@@ -12,6 +12,9 @@ nav_msgs::Odometry odom;
 geometry_msgs::Pose odom_pose;
 nav_msgs::Path global_path;
 bool is_received_odom = false;
+bool is_received_target = false;
+geometry_msgs::PoseStamped current_pose, target_pose;
+std::vector<geometry_msgs::PoseStamped> desired_path;
 
 double distance(const geometry_msgs::PoseStamped& p1, const geometry_msgs::PoseStamped& p2)
 {
@@ -76,7 +79,7 @@ std::vector<geometry_msgs::PoseStamped> cubicBezierCurve(
 
     // 起点向前延伸0.35倍的距离
     p2 = p1;
-    double cof_start = 0.3;
+    double cof_start = 0.4;
     p2.pose.position.x += cof_start * len * std::cos(tf::getYaw(p1.pose.orientation));
     p2.pose.position.y += cof_start * len * std::sin(tf::getYaw(p1.pose.orientation));
 
@@ -94,6 +97,16 @@ void odometryCallback(const nav_msgs::OdometryConstPtr &msg) {
     odom = *msg;
     is_received_odom = true;
     odom_pose = odom.pose.pose;
+
+    if (is_received_target) {
+        nav_msgs::Path pub_path;
+        pub_path.header.stamp = ros::Time::now();
+        pub_path.header.frame_id = "odom";
+
+        pub_path.poses = desired_path;
+        global_path_pub.publish(pub_path);
+        ROS_WARN("Publish global path");
+    }
 }
 
 geometry_msgs::Pose transformPose(const geometry_msgs::Pose& robot_pose, const geometry_msgs::Pose& pose) {
@@ -137,14 +150,13 @@ nav_msgs::Path transformPath(const nav_msgs::Path& path, const geometry_msgs::Po
 
 void clickPointCallback(const geometry_msgs::PointStamped &msg) {
     ROS_INFO("Received clicked point: (%.2f, %.2f)", msg.point.x, msg.point.y);
-    geometry_msgs::PoseStamped current_pose, target_pose;
-    current_pose.pose = odom.pose.pose;
     target_pose.pose.position = msg.point;
     target_pose.pose.orientation.w = 1.0;
-    nav_msgs::Path pub_path;
-    pub_path.header.frame_id = "odom";
-    pub_path.poses = cubicBezierCurve({current_pose, target_pose});
-    global_path_pub.publish(pub_path);
+
+    is_received_target = true;
+    current_pose.pose = odom.pose.pose;
+    desired_path = cubicBezierCurve({current_pose, target_pose});
+
 }
 
 int main(int argc, char **argv) {
@@ -157,7 +169,7 @@ int main(int argc, char **argv) {
     ros::Publisher pub_map = nh.advertise<nav_msgs::OccupancyGrid>("/map",10);
 
     nav_msgs::OccupancyGrid msg;// 创建一个OccupancyGrid类型的消息
-    msg.header.frame_id = "map";
+    msg.header.frame_id = "odom";
     msg.info.resolution = 1.0;
     msg.info.width = 30;
     msg.info.height = 30;
