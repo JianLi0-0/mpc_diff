@@ -99,7 +99,7 @@ void globalPathCallback(nav_msgs::PathConstPtr msg) {
 
     trajectory_info.calSpeedData(
             0.0, traj_point.v(), traj_point.a(),
-            trajectory_info.getPathDataPtr()->Length()-save_distance);
+            trajectory_info.getPathDataPtr()->Length()-save_distance, 2.0);
 
     trajectory_info.combinePathAndSpeedProfile();
 
@@ -279,6 +279,7 @@ void MPC_calculate(double &remain_s) {
 //    vel_cmd_pub.publish(cmd);
     ref_cmd.linear.x = v_ref_vec[0];
     ref_cmd.angular.z = w_ref_vec[0];
+    ref_cmd.angular.y = kappa_ref_vec[0];
     ref_vel_cmd_pub.publish(ref_cmd);
     geometry_msgs::PoseStamped ref_point;
     ref_point.header.frame_id = "map";
