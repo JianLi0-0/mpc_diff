@@ -7,6 +7,7 @@
         <param name="/w_max" value="0.8"/>
         <param name="/omega0" value="20.0"/>
         <param name="/omega1" value="0.5"/>
+        <param name="/horizon" value="20"/>
     </node>
 
     <node pkg="mpc_diff" type="test_path_pub" name="test_path_pub" output="screen" >
