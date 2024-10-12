@@ -16,12 +16,14 @@
 #include <boost/algorithm/clamp.hpp>
 #include "trajectory_info.h"
 #include "matplotlibcpp.h"
+#include "bezier_curve.h"
+#include <nav_msgs/OccupancyGrid.h>
 
 namespace plt = matplotlibcpp;
 
 #define PI 3.1415926
 #define yaw_error_max 90.0/180*PI
-#define N 15
+int N = 0;
 
 const double t_step = 0.03;
 const double save_distance = 1.2;
@@ -30,6 +32,8 @@ ros::Publisher vel_cmd_pub, ref_vel_cmd_pub, ref_point_pub, ref_path_pub;
 ros::Publisher recorded_path_pub;
 ros::Publisher global_path_pub;
 nav_msgs::Path recorded_path;
+
+nav_msgs::Odometry odom_;
 
 geometry_msgs::Twist cmd, ref_cmd;
 double pos_gain[3] = {0, 0, 0};
@@ -99,7 +103,8 @@ void globalPathCallback(nav_msgs::PathConstPtr msg) {
 
     trajectory_info.calSpeedData(
             0.0, traj_point.v(), traj_point.a(),
-            trajectory_info.getPathDataPtr()->Length()-save_distance, 2.0);
+            trajectory_info.getPathDataPtr()->Length()-save_distance, 1.6,
+            4.0, 2.0, -2.0);
 
     trajectory_info.combinePathAndSpeedProfile();
 
@@ -304,6 +309,7 @@ void stopCallback(std_msgs::UInt8ConstPtr msg) {
 }
 
 void odometryCallback(const nav_msgs::OdometryConstPtr &msg) {
+    odom_ = *msg;
     odom_pos_(0) = msg->pose.pose.position.x;
     odom_pos_(1) = msg->pose.pose.position.y;
     odom_pos_(2) = msg->pose.pose.position.z;
@@ -360,6 +366,28 @@ void cmdCallback(const ros::TimerEvent &e) {
     last_cmd = cmd;
 }
 
+void clickPointCallback(const geometry_msgs::PointStamped &msg) {
+    ROS_INFO("Received clicked point: (%.2f, %.2f)", msg.point.x, msg.point.y);
+    geometry_msgs::PoseStamped current_pose, target_pose;
+    current_pose.pose = odom_.pose.pose;
+    target_pose.pose.position = msg.point;
+    target_pose.pose.orientation =
+            tf::createQuaternionMsgFromYaw(
+                    std::atan2(msg.point.y - odom_.pose.pose.position.y,
+                               msg.point.x - odom_.pose.pose.position.x));
+
+    trajectory_utils::TrajectoryPoint traj_point;
+    trajectory_info.getRefTrajectoryPoint(
+            trajectory_utils::Vec2d(odom_pos_(0), odom_pos_(1)), traj_point);
+
+    nav_msgs::Path pub_path;
+    pub_path.header.frame_id = "odom";
+    pub_path.poses =  kappaConstrainedBezierCurve({current_pose, target_pose},
+                                                  traj_point.path_point().kappa());
+    global_path_pub.publish(pub_path);
+
+//    globalPathCallback(&pub_path);
+}
 
 int main(int argc, char **argv) {
     ros::init(argc, argv, "traj_server");
@@ -367,6 +395,7 @@ int main(int argc, char **argv) {
 
     ros::Subscriber odom_sub = node.subscribe("/state_estimation", 10, odometryCallback);
     ros::Subscriber global_path_sub = node.subscribe("/global_path", 10, globalPathCallback);
+    ros::Subscriber clicked_point_sub = node.subscribe("/clicked_point", 10, clickPointCallback);
 
     mpc_controller.MPC_init(node);
     vel_cmd_pub = node.advertise<geometry_msgs::Twist>("/cmd_vel", 50);
@@ -374,6 +403,7 @@ int main(int argc, char **argv) {
     ref_point_pub = node.advertise<geometry_msgs::PoseStamped>("/ref_point", 50);
     ref_path_pub = node.advertise<nav_msgs::Path>("/ref_path", 50);
     recorded_path_pub = node.advertise<nav_msgs::Path>("/recorded_path", 50);
+    global_path_pub = node.advertise<nav_msgs::Path>("/global_path", 2);
     stop_command.data = 0;
     dir.data = POSITIVE;
 
@@ -382,9 +412,8 @@ int main(int argc, char **argv) {
 
     ros::Timer cmd_timer = node.createTimer(ros::Duration(0.03), cmdCallback);
 
-//  nh.param("traj_server/time_forward", time_forward_, -1.0);
-//  last_yaw_ = 0.0;
-//  last_yaw_dot_ = 0.0;
+    node.param("/traj_server/horizon", N, 0);
+    ROS_INFO("horizon: %d", N);
 
     ros::Duration(1.0).sleep();
 

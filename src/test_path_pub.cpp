@@ -76,13 +76,13 @@ std::vector<geometry_msgs::PoseStamped> cubicBezierCurve(
 
     // 起点向前延伸0.35倍的距离
     p2 = p1;
-    double cof_start = 0.4;
+    double cof_start = 1.2;
     p2.pose.position.x += cof_start * len * std::cos(tf::getYaw(p1.pose.orientation));
     p2.pose.position.y += cof_start * len * std::sin(tf::getYaw(p1.pose.orientation));
 
     // 终点向后延伸0.4倍的距离
     p3 = p4;
-    double cof_end = 0.4;
+    double cof_end = 0.9;
     p3.pose.position.x += cof_end * (p1.pose.position.x - p4.pose.position.x);
     p3.pose.position.y += cof_end * (p1.pose.position.y - p4.pose.position.y);
 
@@ -152,8 +152,8 @@ int main(int argc, char **argv) {
     ros::NodeHandle nh("test_node");
 
     global_path_pub = nh.advertise<nav_msgs::Path>("/global_path", 2);
-    ros::Subscriber odom_sub = nh.subscribe("/state_estimation", 10, odometryCallback);
-    ros::Subscriber clicked_point_sub = nh.subscribe("/clicked_point", 10, clickPointCallback);
+//    ros::Subscriber odom_sub = nh.subscribe("/state_estimation", 10, odometryCallback);
+//    ros::Subscriber clicked_point_sub = nh.subscribe("/clicked_point", 10, clickPointCallback);
     ros::Publisher pub_map = nh.advertise<nav_msgs::OccupancyGrid>("/map",10);
 
     nav_msgs::OccupancyGrid msg;// 创建一个OccupancyGrid类型的消息
