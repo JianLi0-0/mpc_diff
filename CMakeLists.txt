@@ -43,9 +43,10 @@ link_directories(/usr/local/lib)
 
 add_definitions(${EIGEN3_DEFINITIONS})
 
-add_executable(traj_server src/traj_server.cpp
-                           src/uniform_bspline.cpp
-                           src/MPC.cpp)
+add_executable(traj_server
+        src/traj_server.cpp
+        src/MPC.cpp)
+
 target_link_libraries(traj_server
         ${catkin_LIBRARIES}
         trajectory_utils
@@ -54,6 +55,3 @@ target_link_libraries(traj_server
         Python3::Module
         Python3::NumPy
 )
-
-add_executable(test_path_pub src/test_path_pub.cpp)
-target_link_libraries(test_path_pub ${catkin_LIBRARIES})

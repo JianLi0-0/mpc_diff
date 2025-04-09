@@ -1,4 +1,3 @@
-#include "uniform_bspline.h"
 #include "MPC.hpp"
 #include "nav_msgs/Odometry.h"
 #include "geometry_msgs/Twist.h"
@@ -20,6 +19,7 @@
 #include <nav_msgs/OccupancyGrid.h>
 
 namespace plt = matplotlibcpp;
+using namespace std;
 
 #define PI 3.1415926
 #define yaw_error_max 90.0/180*PI
@@ -39,10 +39,7 @@ geometry_msgs::Twist cmd, ref_cmd;
 double pos_gain[3] = {0, 0, 0};
 double vel_gain[3] = {0, 0, 0};
 
-using ego_planner::UniformBspline;
-
 bool receive_traj_ = false;
-vector<UniformBspline> traj_;
 double traj_duration_;
 
 Eigen::Vector3d odom_pos_, odom_vel_;
@@ -103,46 +100,12 @@ void globalPathCallback(nav_msgs::PathConstPtr msg) {
 
     trajectory_info.calSpeedData(
             0.0, traj_point.v(), traj_point.a(),
-            trajectory_info.getPathDataPtr()->Length()-save_distance, 1.6,
+            trajectory_info.getPathDataPtr()->Length()-save_distance, 2.0,
             4.0, 2.0, -2.0);
 
     trajectory_info.combinePathAndSpeedProfile();
 
-//    {
-//
-//        std::vector<double> t_vec, s_vec, v_vec, a_vec;
-//        double time_span = trajectory_info.getSpeedDataPtr()->get_duration();
-//        for (double t=0.0;t<=time_span;t+=0.01) {
-//            t_vec.push_back(t);
-//        }
-//        std::vector<double> x_traj_vec, y_traj_vec, s_traj_vec, v_traj_vec, a_traj_vec, kappa_traj_vec, theta_traj_vec;
-//        x_traj_vec.reserve(t_vec.size());
-//        y_traj_vec.reserve(t_vec.size());
-//        s_traj_vec.reserve(t_vec.size());
-//        v_traj_vec.reserve(t_vec.size());
-//        a_traj_vec.reserve(t_vec.size());
-//        theta_traj_vec.reserve(t_vec.size());
-//        kappa_traj_vec.reserve(t_vec.size());
-//        auto discretized_trajectory = trajectory_info.getTrajectoryPtr();
-//        for (auto t : t_vec) {
-//            auto traj_point = discretized_trajectory->Evaluate(t);
-//            x_traj_vec.push_back(traj_point.path_point().x());
-//            y_traj_vec.push_back(traj_point.path_point().y());
-//            s_traj_vec.push_back(traj_point.path_point().s());
-//            kappa_traj_vec.push_back(traj_point.path_point().kappa());
-//            v_traj_vec.push_back(traj_point.v());
-//            a_traj_vec.push_back(traj_point.a());
-//            theta_traj_vec.push_back(traj_point.path_point().theta());
-//        }
-//
-//        plt::plot(t_vec, s_traj_vec);
-//        plt::plot(t_vec, v_traj_vec);
-//        plt::plot(t_vec, a_traj_vec);
-//        plt::plot(t_vec, kappa_traj_vec);
-//        plt::plot(t_vec, theta_traj_vec);
-//
-//        plt::show();
-//    }
+    trajectory_info.displayTrajProfile();
 
     traj_duration_ = trajectory_info.getSpeedDataPtr()->get_duration();
     receive_traj_ = true;
@@ -276,10 +239,9 @@ void MPC_calculate(double &remain_s) {
     }
 
     cmd.angular.z = u_k.col(0)(1);
-    static int conut1 = 0;
-    conut1 += 1;
-
     cout << "current vel : : " << u_k.col(0)(0) << "m/s" << endl;
+
+    trajectory_info.displayUpdate(t_cur+t_step, cmd.linear.x);
 
 //    vel_cmd_pub.publish(cmd);
     ref_cmd.linear.x = v_ref_vec[0];
@@ -397,6 +359,14 @@ int main(int argc, char **argv) {
     ros::Subscriber global_path_sub = node.subscribe("/global_path", 10, globalPathCallback);
     ros::Subscriber clicked_point_sub = node.subscribe("/clicked_point", 10, clickPointCallback);
 
+    ros::Publisher pub_map = node.advertise<nav_msgs::OccupancyGrid>("/map",10);
+    nav_msgs::OccupancyGrid msg;// 创建一个OccupancyGrid类型的消息
+    msg.header.frame_id = "map";
+    msg.info.resolution = 1.0;
+    msg.info.width = 30;
+    msg.info.height = 30;
+    msg.data.resize(msg.info.width*msg.info.height);
+
     mpc_controller.MPC_init(node);
     vel_cmd_pub = node.advertise<geometry_msgs::Twist>("/cmd_vel", 50);
     ref_vel_cmd_pub = node.advertise<geometry_msgs::Twist>("/ref_cmd_vel", 50);
@@ -410,7 +380,7 @@ int main(int argc, char **argv) {
 //    plt::figure_size(640, 640);
 
 
-    ros::Timer cmd_timer = node.createTimer(ros::Duration(0.03), cmdCallback);
+    ros::Timer cmd_timer = node.createTimer(ros::Duration(0.05), cmdCallback);
 
     node.param("/traj_server/horizon", N, 0);
     ROS_INFO("horizon: %d", N);
@@ -418,6 +388,8 @@ int main(int argc, char **argv) {
     ros::Duration(1.0).sleep();
 
     ROS_WARN("[Traj server]: ready.");
+
+    pub_map.publish(msg);
 
     ros::spin();
 

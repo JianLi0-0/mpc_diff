@@ -11,7 +11,7 @@ Panels:
         - /Odometry1/Shape1
         - /Path1
       Splitter Ratio: 0.4581005573272705
-    Tree Height: 1225
+    Tree Height: 441
   - Class: rviz/Selection
     Name: Selection
   - Class: rviz/Tool Properties
@@ -368,8 +368,8 @@ Visualization Manager:
       Near Clip Distance: 0.009999999776482582
       Scale: 64.63522338867188
       Target Frame: map
-      X: -1.3264005184173584
-      Y: -0.2788826525211334
+      X: 6.141656398773193
+      Y: -2.6738216876983643
     Saved:
       - Class: rviz/ThirdPersonFollower
         Distance: 17.48538589477539

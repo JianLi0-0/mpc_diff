@@ -3,7 +3,7 @@
 #include "iostream"
 
 #define PI 3.1415926
-#define T 0.03
+#define T 0.025
 #define w0 1.0
 #define w1 0.5
 #define Ku 1
