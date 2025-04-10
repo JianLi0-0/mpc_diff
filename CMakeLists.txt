@@ -26,18 +26,12 @@ catkin_package(
         #  DEPENDS system_lib
 )
 
-add_library(mpc_diff
-        src/MPC.cpp
-        include/MPC.hpp)
-target_link_libraries(mpc_diff
-        ${catkin_LIBRARIES}
-        )
-
 include_directories(
         include
         /usr/local/include
         ${EIGEN3_INCLUDE_DIR}
         ${catkin_INCLUDE_DIRS}
+        /usr/local/include/osqp
 )
 link_directories(/usr/local/lib)
 
@@ -50,8 +44,10 @@ add_executable(traj_server
 target_link_libraries(traj_server
         ${catkin_LIBRARIES}
         trajectory_utils
-        libqpOASES.so
+#        libqpOASES.so
         Python3::Python
         Python3::Module
         Python3::NumPy
+        /usr/local/lib/libosqp.so
+        /usr/local/lib/libOsqpEigen.so
 )

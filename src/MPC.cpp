@@ -1,6 +1,9 @@
 #include "MPC.hpp"
 #include "math.h"
 #include "iostream"
+#include <Eigen/Dense>
+#include <OsqpEigen/OsqpEigen.h>
+#include <ros/ros.h>
 
 #define PI 3.1415926
 #define T 0.025
@@ -12,12 +15,13 @@
 
 using namespace Eigen;
 using namespace std;
-USING_NAMESPACE_QPOASES
+//USING_NAMESPACE_QPOASES
 
-MatrixXd
-MPC_controller::MPC_Solve_qp(Eigen::Vector3d X_k, std::vector<Eigen::Vector3d> X_r, std::vector<Eigen::Vector2d> U_r,
-                             const int N) {
+MatrixXd MPC_controller::MPC_Solve_qp(
+        Eigen::Vector3d X_k, std::vector<Eigen::Vector3d> X_r,
+        std::vector<Eigen::Vector2d> U_r, const int N) {
     //cout<<"current w : "<<w_max<<endl;
+    auto start = std::chrono::high_resolution_clock::now();
     ////根据参考输入计算出的系数矩阵
     vector<MatrixXd> A_r(N), B_r(N), A_multiply1(N);
     MatrixXd O_r(3 * N, 1);
@@ -74,39 +78,105 @@ MPC_controller::MPC_Solve_qp(Eigen::Vector3d X_k, std::vector<Eigen::Vector3d> X
     VectorXd gradient = 2 * B_bar.transpose() * Q * E;       ////一次项系数
 
 
-    real_t H[2 * N * 2 * N], g[2 * N], A[2 * N], lb[2 * N], ub[2 * N], lbA[1], ubA[1];
-    lbA[0] = N * (v_min + w_min) / Ku;
-    ubA[0] = N * (v_max + w_max) / Kl;
+//    real_t H[2 * N * 2 * N], g[2 * N], A[2 * N], lb[2 * N], ub[2 * N], lbA[1], ubA[1];
+//    lbA[0] = N * (v_min + w_min) / Ku;
+//    ubA[0] = N * (v_max + w_max) / Kl;
+//    for (int i = 0; i < 2 * N; i++) {
+//        g[i] = gradient(i);
+//        A[i] = 1;
+//        if (i % 2 == 0) {
+//            lb[i] = v_min;
+//            ub[i] = v_max;
+//        } else {
+//            lb[i] = w_min;
+//            ub[i] = w_max;
+//        }
+//        for (int j = 0; j < 2 * N; j++) {
+//            H[i * 2 * N + j] = Hesse(i, j);
+//        }
+//    }
+//
+//    int_t nWSR = 800;
+
+    auto end = std::chrono::high_resolution_clock::now();
+    std::chrono::duration<double, std::milli> elapsed = end - start;
+    std::cout << "Problem formulation time taken: " << elapsed.count() << " ms" << std::endl;
+
+//    start = std::chrono::high_resolution_clock::now();
+
+//    QProblem mpc_qp_solver(2 * N, 1);
+//    mpc_qp_solver.setPrintLevel(PL_LOW);
+//    mpc_qp_solver.init(H, g, A, lb, ub, lbA, ubA, nWSR);
+//
+//    real_t x_solution[2 * N];
+//    mpc_qp_solver.getPrimalSolution(x_solution);
+
+//    end = std::chrono::high_resolution_clock::now();
+//    elapsed = end - start;
+//    std::cout << "QPOASE time taken: " << elapsed.count() << " ms" << std::endl;
+
+    start = std::chrono::high_resolution_clock::now();
+
+    // 创建OSQP求解器实例
+    OsqpEigen::Solver solver;
+
+    // 设置求解器参数
+    solver.settings()->setVerbosity(true);   // 输出求解过程信息
+    solver.settings()->setWarmStart(true);   // 启用热启动
+
+    Eigen::SparseMatrix<double> sparse_H(Hesse.sparseView());
+    VectorXf q = gradient.cast<float>();
+
+    Eigen::SparseMatrix<double> sparse_A(2 * N, 2 * N);
+    sparse_A.setIdentity();
+
+    VectorXd lower_bound(2 * N);
+    VectorXd upper_bound(2 * N);
     for (int i = 0; i < 2 * N; i++) {
-        g[i] = gradient(i);
-        A[i] = 1;
         if (i % 2 == 0) {
-            lb[i] = v_min;
-            ub[i] = v_max;
+            lower_bound(i) = v_min;
+            upper_bound(i) = v_max;
         } else {
-            lb[i] = w_min;
-            ub[i] = w_max;
-        }
-        for (int j = 0; j < 2 * N; j++) {
-            H[i * 2 * N + j] = Hesse(i, j);
+            lower_bound(i) = w_min;
+            upper_bound(i) = w_max;
         }
     }
 
-    int_t nWSR = 800;
+    solver.settings()->setVerbosity(false);
+    solver.settings()->setWarmStart(false);
 
-    QProblem mpc_qp_solver(2 * N, 1);
-    mpc_qp_solver.setPrintLevel(PL_LOW);
-    mpc_qp_solver.init(H, g, A, lb, ub, lbA, ubA, nWSR);
+    // 设置问题数据
+    solver.data()->setNumberOfVariables(2*N);
+    solver.data()->setNumberOfConstraints(2*N);
+    if (!solver.data()->setHessianMatrix(sparse_H)) std::cout << "Problem failed to setHessianMatrix !" << std::endl;;
+    if (!solver.data()->setGradient(gradient)) std::cout << "Problem failed to setGradient !" << std::endl;;
+    if (!solver.data()->setLinearConstraintsMatrix(sparse_A)) std::cout << "Problem failed to setLinearConstraintsMatrix !" << std::endl;;
+    if (!solver.data()->setLowerBound(lower_bound)) std::cout << "Problem failed to setLowerBound !" << std::endl;;
+    if (!solver.data()->setUpperBound(upper_bound)) std::cout << "Problem failed to setUpperBound !" << std::endl;;
 
-    real_t x_solution[2 * N];
-    mpc_qp_solver.getPrimalSolution(x_solution);
+    // 初始化求解器
+    if (!solver.initSolver()) cout << "Problem failed to initSolver !" << std::endl;
+    Eigen::VectorXd solution;
+    // 执行求解
+    if (solver.solveProblem() == OsqpEigen::ErrorExitFlag::NoError) {
+        // 获取最优解
+        solution = solver.getSolution();
+//        std::cout << "Optimal solution:\n" << solution << std::endl;
+    } else {
+        std::cout << "Problem failed to solve!" << std::endl;
+    }
 
+    end = std::chrono::high_resolution_clock::now();
+    elapsed = end - start;
+    std::cout << "OSQP Time taken: " << elapsed.count() << " ms" << std::endl;
 
     Vector2d u_k;
     MatrixXd U_result = MatrixXd::Zero(2, N);
     for (int i = 0; i < N; i++) {
-        u_k(0) = x_solution[2 * i];
-        u_k(1) = x_solution[2 * i + 1];
+//        u_k(0) = x_solution[2 * i];
+//        u_k(1) = x_solution[2 * i + 1];
+        u_k(0) = solution[2 * i];
+        u_k(1) = solution[2 * i + 1];
         U_result.col(i) = u_k;
 //        std::cout<<"U "<<i+1<<" : "<<endl<<u_k<<endl;
     }

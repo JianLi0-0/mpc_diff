@@ -1,7 +1,7 @@
 #ifndef MPC_H_
 #define MPC_H_
 
-#include <qpOASES.hpp>
+//#include <qpOASES.hpp>
 #include <Eigen/Eigen>
 #include <vector>
 #include "ros/ros.h"

@@ -14,11 +14,9 @@
 #include <nav_msgs/Path.h>
 #include <boost/algorithm/clamp.hpp>
 #include "trajectory_info.h"
-#include "matplotlibcpp.h"
 #include "bezier_curve.h"
 #include <nav_msgs/OccupancyGrid.h>
 
-namespace plt = matplotlibcpp;
 using namespace std;
 
 #define PI 3.1415926
@@ -100,8 +98,7 @@ void globalPathCallback(nav_msgs::PathConstPtr msg) {
 
     trajectory_info.calSpeedData(
             0.0, traj_point.v(), traj_point.a(),
-            trajectory_info.getPathDataPtr()->Length()-save_distance, 2.0,
-            4.0, 2.0, -2.0);
+            trajectory_info.getPathDataPtr()->Length()-save_distance, 2.0);
 
     trajectory_info.combinePathAndSpeedProfile();
 
@@ -376,8 +373,6 @@ int main(int argc, char **argv) {
     global_path_pub = node.advertise<nav_msgs::Path>("/global_path", 2);
     stop_command.data = 0;
     dir.data = POSITIVE;
-
-//    plt::figure_size(640, 640);
 
 
     ros::Timer cmd_timer = node.createTimer(ros::Duration(0.05), cmdCallback);
