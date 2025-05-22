@@ -1,4 +1,4 @@
-#include "MPC.hpp"
+#include "mpc.h"
 #include "nav_msgs/Odometry.h"
 #include "geometry_msgs/Twist.h"
 #include "std_msgs/UInt8.h"
@@ -32,6 +32,7 @@ ros::Publisher global_path_pub;
 nav_msgs::Path recorded_path;
 
 nav_msgs::Odometry odom_;
+geometry_msgs::PoseStamped current_pose_;
 
 geometry_msgs::Twist cmd, ref_cmd;
 double pos_gain[3] = {0, 0, 0};
@@ -43,7 +44,7 @@ double traj_duration_;
 Eigen::Vector3d odom_pos_, odom_vel_;
 Eigen::Quaterniond odom_orient_;
 
-MPC_controller mpc_controller;
+MPC mpc_controller;
 double roll, pitch, yaw;
 geometry_msgs::PoseStamped pose_cur;
 tf::Quaternion quat;
@@ -70,41 +71,8 @@ void globalPathCallback(nav_msgs::PathConstPtr msg) {
         return;
     }
 
-    Eigen::MatrixXd pos_pts(3, msg->poses.size());
+    mpc_controller.generateReferenceTrajectory(current_pose_, msg->poses);
 
-//    for (size_t i = 0; i < msg->poses.size(); ++i) {
-//        pos_pts(0, i) = msg->poses[i].pose.position.x;
-//        pos_pts(1, i) = msg->poses[i].pose.position.y;
-//        pos_pts(2, i) = msg->poses[i].pose.position.z;
-//    }
-//
-//    UniformBspline pos_traj(pos_pts, 3, 0.07);
-
-    trajectory_utils::TrajectoryPoint traj_point;
-    bool flag = trajectory_info.getRefTrajectoryPoint(
-            trajectory_utils::Vec2d(odom_pos_(0), odom_pos_(1)), traj_point);
-
-    std::cout << traj_point.DebugString() << std::endl;
-
-    std::vector<trajectory_utils::PathPoint> path_data;
-    for (size_t i = 0; i < msg->poses.size(); ++i) {
-        trajectory_utils::PathPoint p;
-        p.set_x(msg->poses[i].pose.position.x);
-        p.set_y(msg->poses[i].pose.position.y);
-        path_data.push_back(p);
-    }
-
-    trajectory_info.setPathData(path_data);
-
-    trajectory_info.calSpeedData(
-            0.0, traj_point.v(), traj_point.a(),
-            trajectory_info.getPathDataPtr()->Length()-save_distance, 2.0);
-
-    trajectory_info.combinePathAndSpeedProfile();
-
-    trajectory_info.displayTrajProfile();
-
-    traj_duration_ = trajectory_info.getSpeedDataPtr()->get_duration();
     receive_traj_ = true;
 }
 
@@ -120,151 +88,6 @@ void adjust_yaw_Callback(std_msgs::UInt8ConstPtr msg) {
 
 void dirCallback(const std_msgs::UInt8ConstPtr &msg) {
     dir = *msg;
-}
-
-std::vector<double> t_vec, x_ref_vec, y_ref_vec, theta_ref_vec, s_ref_vec, v_ref_vec, w_ref_vec, a_ref_vec, kappa_ref_vec;
-bool is_data_updated = false;
-
-void MPC_calculate(double &remain_s) {
-    std::vector<Eigen::Vector3d> X_r;
-    std::vector<Eigen::Vector2d> U_r;
-    Eigen::MatrixXd u_k;
-    Eigen::Vector3d pos_r, pos_r_1, pos_final, v_r_1, v_r_2, X_k;
-    Eigen::Vector2d u_r;
-    Eigen::Vector3d x_r, x_r_1, x_r_2;
-    double v_linear_1, w;
-    double t_k, t_k_1;
-
-    auto discretized_trajectory = trajectory_info.getTrajectoryPtr();
-    trajectory_utils::TrajectoryPoint traj_point;
-    trajectory_info.getRefTrajectoryPoint(
-            trajectory_utils::Vec2d(odom_pos_(0), odom_pos_(1)), traj_point);
-    double t_cur = traj_point.relative_time();
-    std::cout << "t_cur: " << t_cur << ",  traj_duration_: " << traj_duration_ << std::endl;
-
-//    pos_final = traj_[0].evaluateDeBoor(traj_duration_);
-    auto end_point = discretized_trajectory->Evaluate(traj_duration_);
-    pos_final << end_point.path_point().x(), end_point.path_point().y(), 0.0;
-
-    remain_s = end_point.path_point().s() - traj_point.path_point().s();
-
-    {
-        is_data_updated = true;
-        t_vec.clear();
-        x_ref_vec.clear();
-        y_ref_vec.clear();
-        theta_ref_vec.clear();
-        s_ref_vec.clear();
-        v_ref_vec.clear();
-        w_ref_vec.clear();
-        a_ref_vec.clear();
-        kappa_ref_vec.clear();
-    }
-
-    bool is_orientation_adjust = false;
-    double orientation_adjust=0;
-
-    for (int i = 0; i < N; i++) {
-
-        t_k = t_cur + i * t_step;
-        t_k_1 = t_cur + (i + 1) * t_step;
-
-        t_vec.push_back(t_k);
-
-        auto pos_r_raw = discretized_trajectory->Evaluate(t_k);
-        auto pos_r_1_raw = discretized_trajectory->Evaluate(t_k_1);
-        pos_r << pos_r_raw.path_point().x(), pos_r_raw.path_point().y(), 0.0;
-
-        x_r(0) = pos_r(0);
-        x_r(1) = pos_r(1);
-
-        x_ref_vec.push_back(pos_r(0));
-        y_ref_vec.push_back(pos_r(1));
-        s_ref_vec.push_back(pos_r_raw.path_point().s());
-
-        v_linear_1 = pos_r_raw.v();
-        v_ref_vec.push_back(v_linear_1);
-
-        x_r(2) = pos_r_raw.path_point().theta();
-        theta_ref_vec.push_back(x_r(2));
-
-        double yaw1 = pos_r_raw.path_point().theta();
-        double yaw2 = pos_r_1_raw.path_point().theta();
-
-        if (is_orientation_adjust) {
-            x_r(2) += orientation_adjust;
-        }
-
-        if (abs(yaw2 - yaw1) > PI) {
-            is_orientation_adjust = true;
-            if ((yaw2 - yaw1) < 0) {
-                orientation_adjust = 2 * PI;
-            } else {
-                orientation_adjust = -2 * PI;
-            }
-        }
-
-        w = pos_r_raw.v() * pos_r_raw.path_point().kappa();
-        w_ref_vec.push_back(w);
-        kappa_ref_vec.push_back(pos_r_raw.path_point().kappa());
-
-        u_r(0) = v_linear_1;
-        u_r(1) = w;
-
-        X_r.push_back(x_r);
-        U_r.push_back(u_r);
-    }
-
-    X_k(0) = odom_pos_(0);
-    X_k(1) = odom_pos_(1);
-    if (yaw / X_r[0](2) < 0 && abs(yaw) > (PI * 5 / 6)) {
-        if (yaw < 0) {
-            X_k(2) = yaw + 2 * PI;
-        } else {
-            X_k(2) = yaw - 2 * PI;
-        }
-    } else {
-        X_k(2) = yaw;
-    }
-
-    u_k = mpc_controller.MPC_Solve_qp(X_k, X_r, U_r, N);
-
-    if (dir.data == NEGATIVE) {
-        cmd.linear.x = -u_k.col(0)(0);
-    } else {
-        cmd.linear.x = u_k.col(0)(0);
-    }
-
-    cmd.angular.z = u_k.col(0)(1);
-    cout << "current vel : : " << u_k.col(0)(0) << "m/s" << endl;
-
-    trajectory_info.displayUpdate(t_cur+t_step, cmd.linear.x);
-
-//    vel_cmd_pub.publish(cmd);
-    ref_cmd.linear.x = v_ref_vec[0];
-    ref_cmd.angular.z = w_ref_vec[0];
-    ref_cmd.angular.y = kappa_ref_vec[0];
-    ref_vel_cmd_pub.publish(ref_cmd);
-    geometry_msgs::PoseStamped ref_point;
-    ref_point.header.frame_id = "map";
-    ref_point.pose.position.x = x_ref_vec[0];
-    ref_point.pose.position.y = y_ref_vec[0];
-    ref_point.pose.orientation = tf::createQuaternionMsgFromYaw(theta_ref_vec[0]);
-    ref_point_pub.publish(ref_point);
-    nav_msgs::Path ref_path;
-    ref_path.header.frame_id = "map";
-    for (int i = 0; i < N; i++) {
-        geometry_msgs::PoseStamped pose;
-        pose.pose.position.x = x_ref_vec[i];
-        pose.pose.position.y = y_ref_vec[i];
-        pose.pose.orientation = tf::createQuaternionMsgFromYaw(theta_ref_vec[i]);
-        ref_path.poses.push_back(pose);
-    }
-    ref_path_pub.publish(ref_path);
-}
-
-void stopCallback(std_msgs::UInt8ConstPtr msg) {
-    stop_command = *msg;
 }
 
 void odometryCallback(const nav_msgs::OdometryConstPtr &msg) {
@@ -301,6 +124,8 @@ void odometryCallback(const nav_msgs::OdometryConstPtr &msg) {
     recorded_path.poses.push_back(pose);
     recorded_path_pub.publish(recorded_path);
 
+    current_pose_.pose = msg->pose.pose;
+
 }
 
 geometry_msgs::Twist last_cmd;
@@ -310,12 +135,7 @@ void cmdCallback(const ros::TimerEvent &e) {
     if (!receive_traj_)
         return;
 
-    double remain_s = 0.0;
-    MPC_calculate(remain_s);
-
-    if (remain_s < 0.06) {
-        ROS_INFO("remain_s < 0.1");
-        trajectory_info.reset();
+    if (!mpc_controller.calculateVelocity(current_pose_, cmd)) {
         cmd.angular.z = 0;
         cmd.linear.x = 0;
         receive_traj_ = false;
@@ -364,7 +184,7 @@ int main(int argc, char **argv) {
     msg.info.height = 30;
     msg.data.resize(msg.info.width*msg.info.height);
 
-    mpc_controller.MPC_init(node);
+    mpc_controller.init(1.8, 1.0, 19, 0.3);
     vel_cmd_pub = node.advertise<geometry_msgs::Twist>("/cmd_vel", 50);
     ref_vel_cmd_pub = node.advertise<geometry_msgs::Twist>("/ref_cmd_vel", 50);
     ref_point_pub = node.advertise<geometry_msgs::PoseStamped>("/ref_point", 50);

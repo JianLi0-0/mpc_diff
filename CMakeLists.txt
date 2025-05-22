@@ -39,7 +39,7 @@ add_definitions(${EIGEN3_DEFINITIONS})
 
 add_executable(traj_server
         src/traj_server.cpp
-        src/MPC.cpp)
+        src/mpc.cpp)
 
 target_link_libraries(traj_server
         ${catkin_LIBRARIES}
